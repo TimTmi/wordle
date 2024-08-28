@@ -362,8 +362,8 @@ private:
             cout << "\n\n";
             cout << "[Play] \n";
             cout << "[Rules] \n";
-            cout << "[Credits] \n";
-            cout << "[Leaderboard] \n\n";
+            cout << "[Leaderboard] \n";
+            cout << "[Credits] \n\n";
             cout << "[Exit] \n\n";
             cout << ANSICodes::RESET;
 
@@ -467,7 +467,7 @@ private:
 
             else if (input == "hard") {
                 difficulty = Difficulty::HARD;
-                total_guesses = 4;
+                total_guesses = 5;
                 break;
             }
             
@@ -533,7 +533,7 @@ private:
             }
 
             if (!valid_guesses.word_exists(guess) && !secret_words.word_exists(guess)) {
-                dismiss_word("Invalid guess: \'" + guess + "\' is not in word list");
+                dismiss_word("Invalid guess: \'" + guess + "\' not found");
                 continue;
             }
 
@@ -592,15 +592,18 @@ private:
 
         if (correct) {
             double elapsed_seconds = chrono::duration<double>(chrono::steady_clock::now() - start_seconds).count();
+            int elapsed_seconds_int = static_cast<int>(elapsed_seconds);
+            int minutes = elapsed_seconds_int / 60;
+            int seconds = elapsed_seconds_int % 60;
             int score = remaining_guesses * 1000 / min(elapsed_seconds, 1000.0);
             cout << "You won! \n";
 
             pause();
             ConsoleDisplay::clear_screen();
 
-            cout << "Guesses used: " << total_guesses - remaining_guesses << '\n';
-            cout << "Time taken: " << elapsed_seconds << '\n';
-            cout << "Your score is: " << score << "\n\n";
+            cout << "Guesses used:\t" << total_guesses - remaining_guesses << '\n';
+            cout << "Time taken:\t" << minutes << ':' << setw(2) << setfill('0') << seconds << "s \n" << setfill(' ');
+            cout << "Your score is:\t" << score << "\n\n";
             if (difficulty == Difficulty::CUSTOM) pause();
             else submit_score(score, difficulty);
         }
