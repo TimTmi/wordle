@@ -6,6 +6,8 @@
 #include <fstream>
 #include <random>
 #include <chrono>
+#include <limits>
+#include <iomanip>
 
 
 
@@ -78,28 +80,31 @@ public:
 //     return dis(gen);
 // }
 
+template<typename T, typename U>
 struct AVLTreeNode {
-    int score;
-    string name;
+    T key;
+    U value;
     AVLTreeNode *left, *right;
     int height;
 
-    AVLTreeNode(int k) : score(k), name("") , left(nullptr), right(nullptr), height(1) {}
+    AVLTreeNode() {}
+    AVLTreeNode(T k, U v) : key(k), value(v), left(nullptr), right(nullptr), height(1) {}
 };
 
+template<typename T, typename U>
 class AVLTree {
 private:
-    AVLTreeNode *root;
+    AVLTreeNode<T, U> *root;
 
-    void clear(AVLTreeNode *node) {
+    void clear(AVLTreeNode<T, U> *node) {
         if (!node) return;
         clear(node->left);
         clear(node->right);
         delete node;
     }
 
-    void rotate_left(AVLTreeNode *&node) {
-        AVLTreeNode *right_node = node->right, *min_node = right_node->left;
+    void rotate_left(AVLTreeNode<T, U> *&node) {
+        AVLTreeNode<T, U> *right_node = node->right, *min_node = right_node->left;
 
         right_node->left = node;
         node->right = min_node;
@@ -110,8 +115,8 @@ private:
         node = right_node;
     }
 
-    void rotate_right(AVLTreeNode *&node) {
-        AVLTreeNode *left_node = node->left, *max_node = left_node->right;
+    void rotate_right(AVLTreeNode<T, U> *&node) {
+        AVLTreeNode<T, U> *left_node = node->left, *max_node = left_node->right;
 
         left_node->right = node;
         node->left = max_node;
@@ -122,79 +127,130 @@ private:
         node = left_node;
     }
 
-    void rotate_left_right(AVLTreeNode *&node) {
+    void rotate_left_right(AVLTreeNode<T, U> *&node) {
         rotate_left(node->left);
         rotate_right(node);
     }
 
-    void rotate_right_left(AVLTreeNode *&node) {
+    void rotate_right_left(AVLTreeNode<T, U> *&node) {
         rotate_right(node->right);
         rotate_left(node);
     }
-    
-    int get_height(AVLTreeNode *node) {
-        if (!node) return 0;
-        return node->height;
+
+    int get_height(AVLTreeNode<T, U> *node) const {
+        return node ? node->height : 0;
     }
 
-    int get_balance(AVLTreeNode *node) {
-        if (!node) return 0;
-        return get_height(node->left) - get_height(node->right);
+    int get_balance(AVLTreeNode<T, U> *node) {
+        return node ? get_height(node->left) - get_height(node->right) : 0;
     }
 
-    void insert_internal(AVLTreeNode *&node, int score, const string& name) {
+    void insert_internal(AVLTreeNode<T, U> *&node, T key, U value) {
         if (!node) {
-            node = new AVLTreeNode(score);
-            node->name = name;
+            node = new AVLTreeNode<T, U>(key, value);
             return;
         }
 
-        if (score < node->score) insert_internal(node->left, score, name);
-        else if (score > node->score) insert_internal(node->right, score, name);
-        else return;
+        if (key < node->key) insert_internal(node->left, key, value);
+        else insert_internal(node->right, key, value);
 
         node->height = max(get_height(node->left), get_height(node->right)) + 1;
 
         int balance = get_balance(node);
 
         if (balance > 1) {
-            if (score < node->left->score) rotate_right(node);
+            if (key < node->left->key) rotate_right(node);
             else rotate_left_right(node);
         } else if (balance < -1) {
-            if (score > node->right->score) rotate_left(node);
+            if (key > node->right->key) rotate_left(node);
             else rotate_right_left(node);
         }
     }
 
-    void print_RNL_internal(AVLTreeNode *node) {
+    void traverse_reverse_inorder_internal(AVLTreeNode<T, U> *node, void (*executor)(const AVLTreeNode<T, U>&), bool (*condition)(const AVLTreeNode<T, U>&)) const {
         if (!node) return;
 
-        print_RNL_internal(node->right);
-        cout << ANSICodes::BOLD << ANSICodes::RED;
-        cout << "Name: " << node->name << "\t Score: " << node->score << endl;
-        cout << ANSICodes::RESET;
-        print_RNL_internal(node->left);
+        traverse_reverse_inorder_internal(node->right, executor, condition);
+
+        if (condition(*node)) executor(*node);
+        // cout << "Key: " << node->key << "\t Value: " << node->value << endl;
+        traverse_reverse_inorder_internal(node->left, executor, condition);
+    }
+
+    void serialize(ofstream& ofs, AVLTreeNode<T, U>* node) {
+        bool is_null;
+
+        if (!node) {
+            is_null = true;
+            ofs.write(reinterpret_cast<const char*>(&is_null), sizeof(bool));
+            return;
+        }
+        
+        is_null = false;
+        ofs.write(reinterpret_cast<const char*>(&is_null), sizeof(bool));
+
+        ofs.write(reinterpret_cast<const char*>(&node->key), sizeof(node->key));
+        ofs.write(reinterpret_cast<const char*>(&node->value), sizeof(node->value));
+        
+        serialize(ofs, node->left);
+        serialize(ofs, node->right);
+    }
+
+    AVLTreeNode<T, U>* deserialize(ifstream& ifs) {
+        bool is_null;
+        ifs.read(reinterpret_cast<char*>(&is_null), sizeof(bool));
+        if (is_null) return nullptr;
+
+        auto node = new AVLTreeNode<T, U>;
+        
+        ifs.read(reinterpret_cast<char*>(&node->key), sizeof(node->key));
+        ifs.read(reinterpret_cast<char*>(&node->value), sizeof(node->value));
+
+        node->left = deserialize(ifs);
+        node->right = deserialize(ifs);
+        
+        return node;
     }
 
 public:
-    AVLTree(): root(nullptr) {}
+    AVLTree() : root(nullptr) {}
 
     ~AVLTree() {
         clear(root);
     }
 
-    void insert(int score, const string& name) {
-        insert_internal(root, score, name);
+    void insert(T key, U value) {
+        insert_internal(root, key, value);
     }
-    
-    int height() {
+
+    int height() const {
         return get_height(root);
     }
-    
-    
-    void print_postorder() {
-        print_RNL_internal(root);
-        cout << endl;
+
+    void traverse_reverse_inorder(void (*executor)(const AVLTreeNode<T, U>&), bool (*condition)(const AVLTreeNode<T, U>&) = [](const AVLTreeNode<T, U>&) { return true; }) const {
+        traverse_reverse_inorder_internal(root, executor, condition);
+    }
+
+    void save(const string& filename) {
+        ofstream ofs(filename, ios::binary);
+
+        if (!ofs) {
+            throw runtime_error("Failed to open file for writing.");
+        }
+
+        serialize(ofs, root);
+        ofs.close();
+    }
+
+    void load(const string& filename) {
+        ifstream ifs(filename, ios::binary);
+
+        if (!ifs) {
+            throw runtime_error("Failed to open file for reading.");
+        }
+
+        root = deserialize(ifs);
+        ifs.close();
     }
 };
 
@@ -228,6 +284,10 @@ public:
     static void restore_cursor_position() {
         cout << "\033[u";
     }
+
+    static void draw_separator() {
+        cout << "--------------------------\n";
+    }
 };
 
 
@@ -239,7 +299,7 @@ private:
     mt19937 gen;
 
 public:
-    WordList(): index(0), gen(static_cast<uint64_t>(std::chrono::system_clock::now().time_since_epoch().count())) {}
+    WordList(): index(0), gen(static_cast<uint64_t>(chrono::system_clock::now().time_since_epoch().count())) {}
 
     void add_word(const string &word) {
         list.emplace_back(word);
@@ -256,74 +316,85 @@ public:
     }
 };
 
-AVLTree leaderboard;
-WordList valid_guesses;
-WordList secret_words;
+enum class Difficulty {
+    EASY,
+    MEDIUM,
+    HARD,
+    CUSTOM
+};
+
+struct Submission {
+    char name[16];
+    Difficulty difficulty;
+
+    Submission() {}
+    Submission(const string &name, Difficulty difficulty): difficulty(difficulty) {
+        copy(name.begin(), name.end(), this->name);
+        this->name[name.size()] = '\0';
+    }
+};
 
 void pause() {
     cout << "Enter anything to continue...";
-    cin.get();
+    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+    // cin.get();
 }
+
+
 
 class Game {
 private:
-    // void pause();
-    // void show_main_menu();
-    // void submit_score();
-    // void show_rules();
-    // void show_credits();
-    // void start_game();
-    // void show_leaderboard();
-    // void exit_game();
+    AVLTree<int, Submission> leaderboard;
+    WordList valid_guesses;
+    WordList secret_words;
 
     void show_main_menu() {
-        ConsoleDisplay::clear_screen();
+        while (true) {
+            ConsoleDisplay::clear_screen();
+            cout << ANSICodes::YELLOW;
+            cout << "                                 '||  '||          " << '\n';
+            cout << "... ... ...   ...   ... ..     .. ||   ||    ....  " << '\n';
+            cout << " ||  ||  |  .|  '|.  ||' ''  .'  '||   ||  .|...|| " << '\n';
+            cout << "  ||| |||   ||   ||  ||      |.   ||   ||  ||      " << '\n';
+            cout << "   |   |     '|..|' .||.     '|..'||. .||.  '|...' " << '\n';
+            cout << ANSICodes::RESET;
+            cout << ANSICodes::GREEN << ANSICodes::BOLD;
+            cout << "\n\n";
+            cout << "[Play] \n";
+            cout << "[Rules] \n";
+            cout << "[Credits] \n";
+            cout << "[Leaderboard] \n\n";
+            cout << "[Exit] \n\n";
+            cout << ANSICodes::RESET;
 
-        cout << ANSICodes::YELLOW;
-        cout << "                                 '||  '||          " << '\n';
-        cout << "... ... ...   ...   ... ..     .. ||   ||    ....  " << '\n';
-        cout << " ||  ||  |  .|  '|.  ||' ''  .'  '||   ||  .|...|| " << '\n';
-        cout << "  ||| |||   ||   ||  ||      |.   ||   ||  ||      " << '\n';
-        cout << "   |   |     '|..|' .||.     '|..'||. .||.  '|...' " << '\n';
-        cout << ANSICodes::RESET;
-        cout << ANSICodes::GREEN << ANSICodes::BOLD;
-        cout << '\n';
-        cout << "Play \n";
-        cout << "Rules \n";
-        cout << "Credits \n";
-        cout << "Leaderboard \n";
-        cout << "Exit \n\n";
-        cout << ANSICodes::RESET;
+            string command;
+            cout << "> ";
+            getline(cin, command);
 
-        string command;
-        cout << "Enter command: ";
-        getline(cin, command);
+            for (char &c: command) {
+                c = tolower(c);
+            }
 
-        for (char &c: command) {
-            c = tolower(c);
+            if (command == "play")
+                start_game();
+
+            else if (command == "rules")
+                show_rules();
+
+            else if (command == "credits")
+                show_credits();
+
+            else if (command == "leaderboard")
+                show_leaderboard();
+
+            else if (command == "exit")
+                exit_game();
+
+            else {
+                cout << '\n' << "Unknown command \n";
+                pause();
+            }
         }
-
-        if (command == "play")
-            start_game();
-
-        else if (command == "rules")
-            show_rules();
-
-        else if (command == "credits")
-            show_credits();
-
-        else if (command == "leaderboard")
-            show_leaderboard();
-
-        else if (command == "exit")
-            exit_game();
-
-        else {
-            cout << "Unknown command \n";
-            pause();
-        }
-
-        show_main_menu();
     }
 
     void dismiss_word(const string &message) {
@@ -360,51 +431,63 @@ private:
     }
 
     void start_game() {
-        string difficulty;
+        string input;
+        Difficulty difficulty;
         bool show_alphabet = true;
-        int guesses;
+        int total_guesses, remaining_guesses;
+        auto start_seconds = chrono::steady_clock::now();
 
         while (true) {
             ConsoleDisplay::clear_screen();
 
-            cout << "Select difficulty \n";
-            cout << ANSICodes::GREEN << "\tEasy \n";
-            cout << ANSICodes::YELLOW << "\tMedium \n";
-            cout << ANSICodes::RED << "\tHard \n" << ANSICodes::RESET;
-            cout << "\tCustom \n\n";
-            getline(cin, difficulty);
+            cout << "Select difficulty \n\n";
+            cout << ANSICodes::GREEN << "[Easy] \n";
+            cout << ANSICodes::YELLOW << "[Medium] \n";
+            cout << ANSICodes::RED << "[Hard] \n";
+            cout << ANSICodes::RESET_COLOR << "[Custom] \n\n";
+            cout << "[Back] \n\n";
+            cout << "> ";
+            getline(cin, input);
 
-            for (char &c: difficulty) {
+            for (char &c: input) {
                 c = tolower(c);
             }
 
-            if (difficulty == "easy") {
-                guesses = 8;
+            if (input == "easy") {
+                difficulty = Difficulty::EASY;
+                total_guesses = 8;
                 break;
             }
             
-            else if (difficulty == "medium") {
-                guesses = 6;
+            else if (input == "medium") {
+                difficulty = Difficulty::MEDIUM;
+                total_guesses = 6;
                 break;
             }
 
-            else if (difficulty == "hard") {
-                guesses = 4;
+            else if (input == "hard") {
+                difficulty = Difficulty::HARD;
+                total_guesses = 4;
                 break;
             }
             
-            else if (difficulty == "custom") {
-                cin.ignore();
-                cout << "custom";
+            else if (input == "custom") {
+                difficulty = Difficulty::CUSTOM;
+                ConsoleDisplay::clear_screen();
                 cout << "Number of guesses: ";
-                cin >> guesses;
+                cin >> total_guesses;
                 cout << "Show alphabet (0 / 1): ";
                 cin >> show_alphabet;
                 cin.ignore();
                 break;
             }
+
+            else if (input == "back") {
+                return;
+            }
         }
 
+        remaining_guesses = total_guesses;
         const string &secret_word = secret_words.get_word();
         bool correct = false;
         string alphabet = "00000000000000000000000000";
@@ -421,11 +504,11 @@ private:
         }
         cout << '\n';
 
-        while (guesses > 0) {
+        while (remaining_guesses > 0) {
             ConsoleDisplay::save_cursor_position();
             ConsoleDisplay::move_cursor_to(3);
             ConsoleDisplay::clear_line();
-            cout << "Guesses left: " << guesses << "\n\n\n";
+            cout << "Guesses left: " << remaining_guesses << "\n\n\n";
             ConsoleDisplay::restore_cursor_position();
 
             string guess;
@@ -436,21 +519,23 @@ private:
             ConsoleDisplay::clear_line();
             ConsoleDisplay::move_cursor_up(1);
 
+            for (char &c: guess) {
+                c = toupper(c);
+            }
+
+            if (guess == "QUIT") {
+                return;
+            }
+
             if (guess.length() != 5) {
                 dismiss_word("Invalid guess: word needs to be 5 letters long");
                 continue;
-            }
-
-            for (char &c: guess) {
-                c = toupper(c);
             }
 
             if (!valid_guesses.word_exists(guess) && !secret_words.word_exists(guess)) {
                 dismiss_word("Invalid guess: \'" + guess + "\' is not in word list");
                 continue;
             }
-
-            guesses--;
 
             string secret_word_temp = secret_word;
             string colored_guess;
@@ -499,20 +584,32 @@ private:
                 correct = true;
                 break;
             }
+
+            remaining_guesses--;
         }
 
         cout << '\n';
 
         if (correct) {
+            double elapsed_seconds = chrono::duration<double>(chrono::steady_clock::now() - start_seconds).count();
+            int score = remaining_guesses * 1000 / min(elapsed_seconds, 1000.0);
             cout << "You won! \n";
+
+            pause();
+            ConsoleDisplay::clear_screen();
+
+            cout << "Guesses used: " << total_guesses - remaining_guesses << '\n';
+            cout << "Time taken: " << elapsed_seconds << '\n';
+            cout << "Your score is: " << score << "\n\n";
+            if (difficulty == Difficulty::CUSTOM) pause();
+            else submit_score(score, difficulty);
         }
 
         else {
             cout << "You lost! \n";
             cout << "The secret word is \'" << secret_word << "\' \n";
+            pause();
         }
-
-        submit_score(guesses);
 
         string play_again;
 
@@ -535,76 +632,167 @@ private:
         }
     }
 
-    void submit_score(int score) {
+    void submit_score(int score, Difficulty difficulty) {
         cout << ANSICodes::GREEN;
         cout << "Enter your name: \n";
         cout << ANSICodes::RESET;
 
         cout << ANSICodes::RED;
+        ConsoleDisplay::save_cursor_position();
         string name;
         getline(cin, name);
+        while (name.size() > 15) {
+            ConsoleDisplay::move_cursor_down(1);
+            cout << "Name no longer than 15 letters...\n";\
+            ConsoleDisplay::restore_cursor_position();
+            ConsoleDisplay::clear_line();
+            getline(cin, name);
+        }
+
         cout << ANSICodes::RESET;
-        leaderboard.insert(score, name);
+        leaderboard.insert(score, Submission(name, difficulty));
     }
 
     void show_rules() {
         ConsoleDisplay::clear_screen();
 
-        cout << '\a';
         cout << ANSICodes::CYAN << ANSICodes::BOLD << ANSICodes::UNDERLINE;
         cout << "\tRULES\n\n";
         cout << ANSICodes::RESET;
 
         cout << ANSICodes::CYAN;
-        cout << "The rules of Wordle are elegantly simple. \n";
-        cout << "Your objective is to guess a secret five-letter word before you run out of guesses. \n";
-        cout << "To submit a guess, type any five-letter word and press Enter. \n";
-        cout << "All of your guesses must be real words, according to a dictionary of five-letter words that Wordle allows as guesses. \n";
-        cout << "You cannot make up a non-existent word, like AEIOU, just to guess those letters. \n\n";
+        cout << "The rules of Wordle are simple: \n";
+        cout << "- Your objective is to guess a secret five-letter word before you run out of guesses. \n";
+        cout << "- To submit a guess, type any five-letter word and press Enter. \n";
+        cout << "- All of your guesses must be real words, according to a dictionary of five-letter words that Wordle" << endl; 
+        cout << "  allows as guesses. \n";
+        cout << "- You cannot make up a non-existent word, like AEIOU, just to guess those letters. \n\n";
 
-        cout << "As soon as you have submitted your guess, the game will color-code each letter in your guess to tell you how close it \n";
-        cout << "was to the letters in the hidden word. \n";
-        cout << "A" << ANSICodes::GRAY << ANSICodes::BOLD << " GRAY " << ANSICodes::RESET << ANSICodes::CYAN << "letter means that this letter does not appear in the secret word at all. \n";
-        cout << "A" << ANSICodes::YELLOW << ANSICodes::BOLD << " YELLOW " << ANSICodes::RESET << ANSICodes::CYAN << "letter means that this letter appears in the secret word, but it is in the wrong spot within the word. \n";
-        cout << "A" << ANSICodes::GREEN << ANSICodes::BOLD << " GREEN " << ANSICodes::RESET << ANSICodes::CYAN << "letter means that this letter appears in the secret word, and it is in exactly the right place. \n";
-        cout << "Getting a green square or yellow square will get you closer to guessing the real secret word, since it means you have \n";
-        cout << "guessed a correct letter. \n\n";
+        cout << "- Once your guess has been submitted, the game will color-code each letter in your guess to tell you" << endl; 
+        cout << "  how close it was to the letters in the hidden word. \n";
+        cout << "- A" << ANSICodes::GRAY << ANSICodes::BOLD << " GRAY " << ANSICodes::RESET << ANSICodes::CYAN << "letter means that this letter does not appear in the secret word at all. \n";
+        cout << "- A" << ANSICodes::YELLOW << ANSICodes::BOLD << " YELLOW " << ANSICodes::RESET << ANSICodes::CYAN << "letter means that this letter appears in the secret word, but it is in the wrong spot" << endl; 
+        cout << "  within the word. \n";
+        cout << "- A" << ANSICodes::GREEN << ANSICodes::BOLD << " GREEN " << ANSICodes::RESET << ANSICodes::CYAN << "letter means that this letter appears in the secret word, and it is in exactly the right place. \n";
+        cout << "- Getting a green square or yellow square will get you closer to guessing the real secret word, since it" << endl; 
+        cout << "  means you have guessed a correct letter. \n\n";
 
         cout << ANSICodes::RESET;
 
         pause();
     }
 
-    void show_leaderboard() {
-        ConsoleDisplay::clear_screen();
+    void show_leaderboard(Difficulty difficulty = Difficulty::MEDIUM) {
+        while (true) {
+            string input;
+            bool (*condition)(const AVLTreeNode<int, Submission>&);
 
-        cout << ANSICodes::GREEN << ANSICodes::BOLD << "LEADERBOARD" << ANSICodes::RESET << '\n';
-        leaderboard.print_postorder();
+            ConsoleDisplay::clear_screen();
+            cout << ANSICodes::BLUE << ANSICodes::BOLD << "LEADERBOARD" << ANSICodes::RESET << "\n\n";
 
-        pause();
+            switch (difficulty) {
+                case Difficulty::EASY:
+                    cout << ANSICodes::GREEN;
+                    condition = [](const AVLTreeNode<int, Submission>& node) { return node.value.difficulty == Difficulty::EASY; };
+                    break;
+                case Difficulty::MEDIUM:
+                    cout << ANSICodes::YELLOW;
+                    condition = [](const AVLTreeNode<int, Submission>& node) { return node.value.difficulty == Difficulty::MEDIUM; };
+                    break;
+                case Difficulty::HARD:
+                    cout << ANSICodes::RED ;
+                    condition = [](const AVLTreeNode<int, Submission>& node) { return node.value.difficulty == Difficulty::HARD; };
+                    break;
+            }
+
+            ConsoleDisplay::draw_separator();
+            cout << left;
+            leaderboard.traverse_reverse_inorder([](const AVLTreeNode<int, Submission>& node) { cout << setw(20) << node.value.name << node.key << '\n'; }, condition);
+            ConsoleDisplay::draw_separator();
+
+            cout << ANSICodes::RESET_COLOR << '\n';
+
+            cout << ANSICodes::GREEN << "[Easy] \n";
+            cout << ANSICodes::YELLOW << "[Medium] \n";
+            cout << ANSICodes::RED << "[Hard] \n\n";
+            cout << ANSICodes::RESET_COLOR << "[Back] \n\n";
+            cout << "> ";
+            getline(cin, input);
+
+            for (char &c: input) c = tolower(c);
+
+            if (input == "easy") difficulty = Difficulty::EASY;
+            else if (input == "medium") difficulty = Difficulty::MEDIUM;
+            else if (input == "hard") difficulty = Difficulty::HARD;
+            else if (input == "back") break;
+        }
     }
 
     void show_credits() {
         ConsoleDisplay::clear_screen();
 
+        int width = 20;
+
         cout << ANSICodes::RED << ANSICodes::BOLD;
-        cout << "Name: Tran Anh Khoa \t MSSV: 23127395 \n";
-        cout << "Name: Nguyen Kien Hao \t MSSV: 23127290 \n";
-        cout << "Name: Nguyen Cong Toan \t MSSV: 23127500 \n";
-        cout << "Name: Tran Huu Luong \t MSSV: 23127415 \n\n";
+        cout << left;
+        cout << setw(width) << "Name" << "MSSV \n\n";
+        cout << setw(width) << "Tran Anh Khoa" << "23127395 \n";
+        cout << setw(width) << "Nguyen Kien Hao" << "23127290 \n";
+        cout << setw(width) << "Nguyen Cong Toan" << "23127500 \n";
+        cout << setw(width) << "Tran Huu Luong" << "23127415 \n\n";
         cout << ANSICodes::RESET;
 
         pause();
     }
 
+    void process_file(const string& input_file, const string& output_file, WordList& word_list) {
+        char buffer[6];
+
+        ifstream ifs(output_file, ios::binary);
+
+        if (ifs.is_open()) {
+            while (ifs.read(buffer, 6)) {
+                string word(buffer, buffer + 6);
+                word.erase(word.find_last_not_of('\0') + 1, string::npos);
+                word_list.add_word(word);
+            }
+        }
+        
+        else {
+            ifstream ifs_text(input_file);
+            ofstream ofs_binary(output_file, ios::binary);
+
+            if (!ifs_text.is_open()) {
+                cout << ANSICodes::RED << "Missing word list: \"" << input_file << "\"\n\n";
+                pause();
+                return;
+            }
+
+            while (ifs_text.getline(buffer, sizeof(buffer))) {
+                ofs_binary.write(buffer, sizeof(buffer));
+                word_list.add_word(string(buffer));
+            }
+
+            ifs_text.close();
+            ofs_binary.close();
+        }
+
+        ifs.close();
+    }
+
     void exit_game() {
         cout << "Exiting the program..." << endl;
-        std::exit(0); 
+        leaderboard.save("leaderboard.dat");
+        exit(0); 
     }
 
 public:
     void start() {
-        leaderboard.insert(999, "khoa");
+        process_file("valid-guesses.txt", "valid-guesses.dat", valid_guesses);
+        process_file("secret-words.txt", "secret-words.dat", secret_words);
+
+        leaderboard.insert(999, Submission("khoa", Difficulty::HARD));
+        leaderboard.load("leaderboard.dat");
         show_main_menu();
     }
 };
@@ -612,27 +800,7 @@ public:
 
 
 int main() {
-    string word;
-
-    ifstream ifs_valid_guesses("valid-guesses.txt");
-    if (!ifs_valid_guesses.is_open()) {
-        cout << ANSICodes::RED << "Missing word list: \"valid-guesses.txt\"\n\n";
-        pause();
-        return -1;
-    }
-
-    ifstream ifs_secret_words("secret-words.txt");
-    if (!ifs_secret_words.is_open()) {
-        cout << ANSICodes::RED << "Missing word list: \"secret-words.txt\"\n\n";
-        pause();
-        return -1;
-    }
-
-    while (getline(ifs_valid_guesses, word)) valid_guesses.add_word(word);
-    while (getline(ifs_secret_words, word)) secret_words.add_word(word);
-
     Game game;
-
     game.start();
 
     return 0;
