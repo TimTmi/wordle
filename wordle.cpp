@@ -14,6 +14,11 @@
 using namespace std;
 
 
+
+mt19937 gen(static_cast<uint64_t>(chrono::system_clock::now().time_since_epoch().count()));
+
+
+
 class ANSICodes {
 public:
     // Text colors
@@ -67,9 +72,6 @@ public:
     static constexpr const char* RESET_HIDDEN = "\033[28m";
     static constexpr const char* RESET_COLOR = "\033[39m";
     static constexpr const char* RESET_BG_COLOR = "\033[49m";
-
-    // Line & cursor manipulation
-    static constexpr const char* CLEAR_LINE = "\033[2K\033[F";
 };
 
 
@@ -87,7 +89,7 @@ struct AVLTreeNode {
     AVLTreeNode *left, *right;
     int height;
 
-    AVLTreeNode() {}
+    AVLTreeNode(): left(nullptr), right(nullptr), height(1) {}
     AVLTreeNode(T k, U v) : key(k), value(v), left(nullptr), right(nullptr), height(1) {}
 };
 
@@ -141,7 +143,7 @@ private:
         return node ? node->height : 0;
     }
 
-    int get_balance(AVLTreeNode<T, U> *node) {
+    int get_balance(const AVLTreeNode<T, U> *node) const {
         return node ? get_height(node->left) - get_height(node->right) : 0;
     }
 
@@ -173,7 +175,6 @@ private:
         traverse_reverse_inorder_internal(node->right, executor, condition);
 
         if (condition(*node)) executor(*node);
-        // cout << "Key: " << node->key << "\t Value: " << node->value << endl;
         traverse_reverse_inorder_internal(node->left, executor, condition);
     }
 
@@ -286,7 +287,11 @@ public:
     }
 
     static void draw_separator() {
-        cout << "--------------------------\n";
+        cout << "---------------------------\n";
+    }
+
+    static string hint(string message) {
+        return ANSICodes::GRAY + message + ANSICodes::RESET_COLOR;
     }
 };
 
@@ -296,10 +301,9 @@ class WordList {
 private:
     vector<string> list;
     int index;
-    mt19937 gen;
 
 public:
-    WordList(): index(0), gen(static_cast<uint64_t>(chrono::system_clock::now().time_since_epoch().count())) {}
+    WordList(): index(0) {}
 
     void add_word(const string &word) {
         list.emplace_back(word);
@@ -334,8 +338,15 @@ struct Submission {
     }
 };
 
+template<typename T>
+T clamp(T v, T min_v, T max_v) {
+    if (v < min_v) return min_v;
+    if (v > max_v) return max_v;
+    return v;
+}
+
 void pause() {
-    cout << "Enter anything to continue...";
+    cout << "Press Enter to continue...";
     cin.ignore(numeric_limits<streamsize>::max(), '\n');
     // cin.get();
 }
@@ -351,14 +362,15 @@ private:
     void show_main_menu() {
         while (true) {
             ConsoleDisplay::clear_screen();
-            cout << ANSICodes::YELLOW;
-            cout << "                                 '||  '||          " << '\n';
-            cout << "... ... ...   ...   ... ..     .. ||   ||    ....  " << '\n';
-            cout << " ||  ||  |  .|  '|.  ||' ''  .'  '||   ||  .|...|| " << '\n';
-            cout << "  ||| |||   ||   ||  ||      |.   ||   ||  ||      " << '\n';
-            cout << "   |   |     '|..|' .||.     '|..'||. .||.  '|...' " << '\n';
+            cout << ANSICodes::YELLOW << ANSICodes::BOLD;
+
+            cout << R"(                       _ _      )" << '\n';
+            cout << R"(__      _____  _ __ __| | | ___ )" << '\n';
+            cout << R"(\ \ /\ / / _ \| '__/ _` | |/ _ \)" << '\n';
+            cout << R"( \ V  V / (_) | | | (_| | |  __/)" << '\n';
+            cout << R"(  \_/\_/ \___/|_|  \__,_|_|\___|)" << '\n';
             cout << ANSICodes::RESET;
-            cout << ANSICodes::GREEN << ANSICodes::BOLD;
+            // cout << ANSICodes::GREEN << ANSICodes::BOLD;
             cout << "\n\n";
             cout << "[Play] \n";
             cout << "[Rules] \n";
@@ -399,7 +411,6 @@ private:
 
     void dismiss_word(const string &message) {
         ConsoleDisplay::move_cursor_down(1);
-        // ConsoleDisplay::clear_line();
         cout << message;
         ConsoleDisplay::restore_cursor_position();
         ConsoleDisplay::clear_line();
@@ -427,13 +438,14 @@ private:
         }
 
         cout << letter << ANSICodes::RESET_COLOR;
-        // ConsoleDisplay::restore_cursor_position();
     }
 
     void start_game() {
         string input;
         Difficulty difficulty;
         bool show_alphabet = true;
+        int hidden_letters_count = 0;
+        vector<int> hidden_letters = {0, 1, 2, 3, 4};
         int total_guesses, remaining_guesses;
         auto start_seconds = chrono::steady_clock::now();
 
@@ -476,8 +488,11 @@ private:
                 ConsoleDisplay::clear_screen();
                 cout << "Number of guesses: ";
                 cin >> total_guesses;
-                cout << "Show alphabet (0 / 1): ";
+                cout << "Show alphabet " << ConsoleDisplay::hint("(0 / 1)") << ": ";
                 cin >> show_alphabet;
+                cout << "Hidden letters " << ConsoleDisplay::hint("(0 - 5)") << ": ";
+                cin >> hidden_letters_count;
+                hidden_letters_count = clamp(hidden_letters_count, 0, 5); 
                 cin.ignore();
                 break;
             }
@@ -494,7 +509,9 @@ private:
 
         ConsoleDisplay::clear_screen();
 
-        cout << "A B C D E F G H I J K L M N O P Q R S T U V W X Y Z";
+        if (show_alphabet) {
+            cout << "A B C D E F G H I J K L M N O P Q R S T U V W X Y Z";
+        }
 
         ConsoleDisplay::move_cursor_to(5);
 
@@ -527,6 +544,8 @@ private:
                 return;
             }
 
+            if (guess == secret_word) correct = true;
+
             if (guess.length() != 5) {
                 dismiss_word("Invalid guess: word needs to be 5 letters long");
                 continue;
@@ -540,8 +559,20 @@ private:
             string secret_word_temp = secret_word;
             string colored_guess;
 
+            shuffle(hidden_letters.begin(), hidden_letters.end(), gen);
+
+            for (int i = 0; i < hidden_letters_count; ++i) {
+                guess[hidden_letters[i]] = ' ';
+            }
+
             for (size_t i = 0, length = guess.length(); i < length; ++i) {
                 char c = guess[i];
+
+                if (c == ' ') {
+                    colored_guess += ' ';
+                    continue;
+                }
+
                 if (c == toupper(secret_word_temp[i])) {
                     colored_guess += ANSICodes::GREEN + string(1, c) + ANSICodes::RESET;
                     secret_word_temp[i] = '-';
@@ -580,11 +611,7 @@ private:
             ConsoleDisplay::restore_cursor_position();
             cout << '\t' << colored_guess << '\n';
 
-            if (guess == secret_word) {
-                correct = true;
-                break;
-            }
-
+            if (correct) break;
             remaining_guesses--;
         }
 
@@ -595,14 +622,14 @@ private:
             int elapsed_seconds_int = static_cast<int>(elapsed_seconds);
             int minutes = elapsed_seconds_int / 60;
             int seconds = elapsed_seconds_int % 60;
-            int score = remaining_guesses * 1000 / min(elapsed_seconds, 1000.0);
+            int score = remaining_guesses * 1000 / clamp(elapsed_seconds, 1.0, 1000.0);
             cout << "You won! \n";
 
             pause();
             ConsoleDisplay::clear_screen();
 
             cout << "Guesses used:\t" << total_guesses - remaining_guesses << '\n';
-            cout << "Time taken:\t" << minutes << ':' << setw(2) << setfill('0') << seconds << "s \n" << setfill(' ');
+            cout << "Time taken:\t" << minutes << 'm' << setw(2) << setfill('0') << seconds << "s \n" << setfill(' ');
             cout << "Your score is:\t" << score << "\n\n";
             if (difficulty == Difficulty::CUSTOM) pause();
             else submit_score(score, difficulty);
@@ -666,19 +693,14 @@ private:
         cout << ANSICodes::CYAN;
         cout << "The rules of Wordle are simple: \n";
         cout << "- Your objective is to guess a secret five-letter word before you run out of guesses. \n";
-        cout << "- To submit a guess, type any five-letter word and press Enter. \n";
-        cout << "- All of your guesses must be real words, according to a dictionary of five-letter words that Wordle" << endl; 
-        cout << "  allows as guesses. \n";
-        cout << "- You cannot make up a non-existent word, like AEIOU, just to guess those letters. \n\n";
+        cout << "- To submit a guess, type any " << ANSICodes::UNDERLINE << "REAL" << ANSICodes::RESET_UNDERLINE << " five-letter word and press Enter. \n\n";
 
-        cout << "- Once your guess has been submitted, the game will color-code each letter in your guess to tell you" << endl; 
+        cout << "- Once your guess has been submitted, the game will color-code each letter in your guess to tell you \n"; 
         cout << "  how close it was to the letters in the hidden word. \n";
         cout << "- A" << ANSICodes::GRAY << ANSICodes::BOLD << " GRAY " << ANSICodes::RESET << ANSICodes::CYAN << "letter means that this letter does not appear in the secret word at all. \n";
-        cout << "- A" << ANSICodes::YELLOW << ANSICodes::BOLD << " YELLOW " << ANSICodes::RESET << ANSICodes::CYAN << "letter means that this letter appears in the secret word, but it is in the wrong spot" << endl; 
+        cout << "- A" << ANSICodes::YELLOW << ANSICodes::BOLD << " YELLOW " << ANSICodes::RESET << ANSICodes::CYAN << "letter means that this letter appears in the secret word, but it is in the wrong spot \n"; 
         cout << "  within the word. \n";
-        cout << "- A" << ANSICodes::GREEN << ANSICodes::BOLD << " GREEN " << ANSICodes::RESET << ANSICodes::CYAN << "letter means that this letter appears in the secret word, and it is in exactly the right place. \n";
-        cout << "- Getting a green square or yellow square will get you closer to guessing the real secret word, since it" << endl; 
-        cout << "  means you have guessed a correct letter. \n\n";
+        cout << "- A" << ANSICodes::GREEN << ANSICodes::BOLD << " GREEN " << ANSICodes::RESET << ANSICodes::CYAN << "letter means that this letter appears in the secret word, and it is in exactly the right place. \n\n";
 
         cout << ANSICodes::RESET;
 
@@ -691,7 +713,7 @@ private:
             bool (*condition)(const AVLTreeNode<int, Submission>&);
 
             ConsoleDisplay::clear_screen();
-            cout << ANSICodes::BLUE << ANSICodes::BOLD << "LEADERBOARD" << ANSICodes::RESET << "\n\n";
+            cout << ANSICodes::BLUE << ANSICodes::BOLD << ANSICodes::UNDERLINE << "\tLEADERBOARD" << ANSICodes::RESET << "\n\n";
 
             switch (difficulty) {
                 case Difficulty::EASY:
@@ -715,10 +737,11 @@ private:
 
             cout << ANSICodes::RESET_COLOR << '\n';
 
-            cout << ANSICodes::GREEN << "[Easy] \n";
-            cout << ANSICodes::YELLOW << "[Medium] \n";
-            cout << ANSICodes::RED << "[Hard] \n\n";
-            cout << ANSICodes::RESET_COLOR << "[Back] \n\n";
+            cout << (difficulty == Difficulty::EASY ? (string(ANSICodes::BG_GREEN) + string(ANSICodes::BLACK)) : ANSICodes::GREEN) << "[Easy]\n" << ANSICodes::RESET;
+            cout << (difficulty == Difficulty::MEDIUM ? (string(ANSICodes::BG_YELLOW) + string(ANSICodes::BLACK)) : ANSICodes::YELLOW) << "[Medium]\n" << ANSICodes::RESET;
+            cout << (difficulty == Difficulty::HARD ? (string(ANSICodes::BG_RED) + string(ANSICodes::BLACK)) : ANSICodes::RED) << "[Hard]\n\n" << ANSICodes::RESET;
+            cout << "[Back] \n\n";
+
             cout << "> ";
             getline(cin, input);
 
@@ -734,16 +757,21 @@ private:
     void show_credits() {
         ConsoleDisplay::clear_screen();
 
-        int width = 20;
+        int width = 19;
 
         cout << ANSICodes::RED << ANSICodes::BOLD;
+        cout << ANSICodes::UNDERLINE << "\tCREDITS\n\n" << ANSICodes::RESET_UNDERLINE;
         cout << left;
+        ConsoleDisplay::draw_separator();
         cout << setw(width) << "Name" << "MSSV \n\n";
         cout << setw(width) << "Tran Anh Khoa" << "23127395 \n";
         cout << setw(width) << "Nguyen Kien Hao" << "23127290 \n";
         cout << setw(width) << "Nguyen Cong Toan" << "23127500 \n";
-        cout << setw(width) << "Tran Huu Luong" << "23127415 \n\n";
+        cout << setw(width) << "Tran Huu Luong" << "23127415 \n";
+        ConsoleDisplay::draw_separator();
         cout << ANSICodes::RESET;
+
+        cout << '\n';
 
         pause();
     }
@@ -784,7 +812,7 @@ private:
     }
 
     void exit_game() {
-        cout << "Exiting the program..." << endl;
+        cout << "Exiting the program...";
         leaderboard.save("leaderboard.dat");
         exit(0); 
     }
@@ -794,8 +822,13 @@ public:
         process_file("valid-guesses.txt", "valid-guesses.dat", valid_guesses);
         process_file("secret-words.txt", "secret-words.dat", secret_words);
 
-        leaderboard.insert(999, Submission("khoa", Difficulty::HARD));
-        leaderboard.load("leaderboard.dat");
+        // leaderboard.insert(999, Submission("khoa", Difficulty::HARD));
+        ifstream ifs("leaderboard.dat");
+        if (ifs.is_open()) {
+            leaderboard.load("leaderboard.dat");
+            ifs.close();
+        }
+
         show_main_menu();
     }
 };
